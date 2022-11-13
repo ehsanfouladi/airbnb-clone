@@ -1,20 +1,15 @@
 {% extends "base.html" %}
 {% block page_title %}
-Search 
+Log In 
 {% endblock page_title %}
 {% block search-bar %}
 {% endblock search-bar %}
 {% block content %}
-
-    Search!
- <form  method="get" action="{%url "rooms:search" %}"> 
+{% include 'patrtials/social_login.html' %}
+<form method="POST", action="{%url "users:login" %}">
+    {% csrf_token %}
     {{form.as_p}}
-    <button>Search </button>
+    <button>Login</button>
 </form>
-
-<h1>Resaults</h1>
-{% for room in rooms %}
-<h3>{{room.name}}</h3>
-{% endfor %}
 
 {% endblock content %}
