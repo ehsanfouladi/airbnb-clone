@@ -1,9 +1,11 @@
 import os
 import requests
-from django.views.generic import FormView
+from django.contrib.auth.views import PasswordChangeView
+from django.views.generic import FormView, DetailView, UpdateView
 from django.shortcuts import redirect, reverse
 from django.urls import reverse_lazy
 from django.contrib.auth import authenticate, login, logout
+from django.contrib import messages
 from . import forms, models
 
 
@@ -38,6 +40,7 @@ class LoginView(FormView):
 
 
 def log_out(request):
+    messages.info(request, f"See you later {request.user.first_name}")
     logout(request)
     return redirect(reverse("users:login"))
 
@@ -99,7 +102,7 @@ def github_callback(request):
             token_json = token.json()
             error = token_json.get("error", None)
             if error is not None:
-                raise GithubException()
+                raise GithubException(f"Github Error: {error}")
             else:
                 access_token = token_json.get("access_token")
                 print("ACCESS TOKEN", access_token)
@@ -115,30 +118,94 @@ def github_callback(request):
                 if username is not None:
                     name = profile_json.get("name")
                     email = profile_json.get("email")
+                    if email is None:
+                        raise GithubException(
+                            "Cannot get your email address from Github"
+                        )
                     bio = profile_json.get("bio")
                     print(name, email, bio)
                     try:
                         user = models.User.objects.get(email=email)
                         if user.login_method != models.User.LOGIN_GITHUB:
-                            raise GithubException()
+                            raise GithubException(
+                                f"Please log in with: {user.login_method}"
+                            )
                     except models.User.DoesNotExist:
                         user = models.User.objects.create(
+                            username=email,
                             email=email,
                             first_name=name,
                             bio=bio,
-                            username=email,
                             login_method=models.User.LOGIN_GITHUB,
                             email_verified=True,
                         )
                         user.set_unusable_password()
                         user.save()
+                    messages.success(request, f"Welcome back {user.first_name}")
                     login(request, user)
                     return redirect(reverse("core:home"))
 
                 else:
-                    raise GithubException()
+                    raise GithubException("Github Error: cannot retrive username.")
         else:
-            raise GithubException()
-    except Exception:
-        # send error messages
+            raise GithubException("Can't get authorization code")
+    except GithubException as e:
+        messages.error(request, e)
         return redirect(reverse("users:login"))
+
+
+class UserProfileView(DetailView):
+
+    model = models.User
+    context_object_name = "user_obj"
+
+    # def get_context_data(self, **kwargs):
+    #     context = super().get_context_data(**kwargs)
+    #     #context["hello"] = "Hello"
+
+    #     return context
+
+
+class UpdateProfileView(UpdateView):
+    """ """
+
+    model = models.User
+    fields = (
+        # "email",
+        "first_name",
+        "last_name",
+        # "avatar",
+        "gender",
+        "bio",
+        "birthdate",
+        "language",
+        "currency",
+    )
+    template_name = "users/update-profile.html"
+
+    def get_object(self):
+        return self.request.user
+
+    # def form_valid(self, form):
+    #     email = form.cleaned_data.get("email")
+    #     self.object.username = email
+    #     self.object.save()
+    #     return super().form_valid(form)
+
+    def get_form(self, form_class=None):
+
+        form = super().get_form(form_class=form_class)
+        form.fields["first_name"].widget.attrs = {"placeholder": "First Name"}
+        form.fields["last_name"].widget.attrs = {"placeholder": "Last Name"}
+        form.fields["gender"].widget.attrs = {"placeholder": "Gender"}
+        form.fields["bio"].widget.attrs = {"placeholder": "Bio"}
+        form.fields["birthdate"].widget.attrs = {"placeholder": "Birthdate"}
+        form.fields["language"].initial = "Language"
+        form.fields["currency"].widget.attrs = {"placeholder": "Currency"}
+        return form
+
+
+class UpdatePasswordView(PasswordChangeView):
+    """ """
+
+    template_name = "users/update-password.html"
